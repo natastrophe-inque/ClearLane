@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-surface-dark dark:text-gray-100 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    overscroll-behavior: none;
+  }
+
+  /* High contrast mode overrides */
+  .high-contrast {
+    --tw-text-opacity: 1;
+  }
+  .high-contrast body {
+    @apply text-black dark:text-white;
+  }
+}
+
+@layer components {
+  /* Mobile app container */
+  .app-shell {
+    @apply mx-auto max-w-md min-h-[100dvh] flex flex-col bg-white dark:bg-surface-dark shadow-2xl relative overflow-hidden;
+  }
+
+  /* Card surface */
+  .card {
+    @apply bg-white dark:bg-surface-card-dark rounded-2xl border border-gray-100 dark:border-gray-800 p-4;
+  }
+
+  .card-interactive {
+    @apply card active:scale-[0.98] transition-transform cursor-pointer hover:border-brand-200 dark:hover:border-brand-800;
+  }
+
+  /* Gradient backgrounds */
+  .gradient-brand {
+    @apply bg-gradient-to-br from-brand-600 to-brand-800;
+  }
+
+  .gradient-accent {
+    @apply bg-gradient-to-br from-accent-400 to-accent-600;
+  }
+
+  .gradient-mesh {
+    @apply bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900;
+  }
+
+  /* Progress ring */
+  .progress-ring {
+    transform: rotate(-90deg);
+  }
+
+  /* Score display */
+  .score-ring-bg {
+    stroke: theme('colors.gray.200');
+  }
+  .dark .score-ring-bg {
+    stroke: theme('colors.gray.700');
+  }
+
+  /* Breathing circle */
+  .breathing-circle {
+    @apply w-40 h-40 rounded-full gradient-brand animate-breathe flex items-center justify-center;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    @apply fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-50;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .tab-bar-inner {
+    @apply mx-auto max-w-md flex items-center justify-around h-16 px-2;
+  }
+
+  .tab-item {
+    @apply flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors;
+  }
+
+  .tab-item-active {
+    @apply text-brand-600 dark:text-brand-400;
+  }
+
+  .tab-item-inactive {
+    @apply text-gray-400 dark:text-gray-500;
+  }
+
+  /* Badge / pill */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* Skill node */
+  .skill-node {
+    @apply w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all;
+  }
+
+  .skill-node-unlocked {
+    @apply bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 shadow-sm;
+  }
+
+  .skill-node-locked {
+    @apply bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600;
+  }
+
+  .skill-node-completed {
+    @apply bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400;
+  }
+
+  /* Button base */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-2xl transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600 px-6 py-3.5;
+  }
+
+  .btn-secondary {
+    @apply btn bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 px-6 py-3.5;
+  }
+
+  .btn-accent {
+    @apply btn bg-accent-500 text-white hover:bg-accent-600 px-6 py-3.5;
+  }
+
+  .btn-ghost {
+    @apply btn text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950 px-4 py-2;
+  }
+
+  .btn-sm {
+    @apply px-4 py-2 text-sm;
+  }
+
+  /* Input */
+  .input {
+    @apply w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all;
+  }
+
+  /* Section header */
+  .section-header {
+    @apply flex items-center justify-between px-4 py-3;
+  }
+
+  .section-title {
+    @apply text-lg font-bold text-gray-900 dark:text-white;
+  }
+
+  .section-link {
+    @apply text-sm font-semibold text-brand-600 dark:text-brand-400;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Safe area */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
