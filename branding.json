@@ -1,0 +1,9 @@
+{
+  "icon": "ph:steering-wheel-duotone",
+  "primaryColor": "#1E40AF",
+  "backgroundColor": "#F3F4F6",
+  "accentColor": "#F59E0B",
+  "heroTitle": "ClearLane",
+  "layoutStyle": "minimal",
+  "previewSvg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 240'><rect width='400' height='240' rx='16' fill='#1E40AF'/><rect x='0' y='0' width='400' height='56' rx='16' fill='#1E3A8A'/><rect x='16' y='16' width='80' height='24' rx='6' fill='#F59E0B'/><text x='200' y='34' text-anchor='middle' fill='#fff' font-size='13' font-family='sans-serif' font-weight='600'>ClearLane</text><text x='200' y='110' text-anchor='middle' fill='#93C5FD' font-size='28' font-family='sans-serif' font-weight='700'>78%</text><text x='200' y='136' text-anchor='middle' fill='#BFDBFE' font-size='12' font-family='sans-serif'>Confidence Score</text><rect x='48' y='160' width='304' height='8' rx='4' fill='#1E3A8A'/><rect x='48' y='160' width='237' height='8' rx='4' fill='#F59E0B'/><rect x='0' y='184' width='400' height='56' rx='0' fill='#F8FAFC'/><circle cx='40' cy='212' r='14' fill='#1E40AF'/><circle cx='133' cy='212' r='14' fill='#DBEAFE'/><circle cx='226' cy='212' r='14' fill='#DBEAFE'/><circle cx='320' cy='212' r='14' fill='#DBEAFE'/><rect x='360' y='198' width='24' height='28' rx='6' fill='#DBEAFE'/></svg>"
+}
