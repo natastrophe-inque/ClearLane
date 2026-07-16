@@ -163,19 +163,27 @@ function matchesNormalizedEmail(candidateEmail: string, normalizedEmail: string)
 }
 
 async function hashPassword(password: string): Promise<string> {
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
-    const digest = await crypto.subtle.digest('SHA-256', encoded)
-    return `sha256:${bytesToHex(new Uint8Array(digest))}`
+  if (!('crypto' in globalThis) || !globalThis.crypto.subtle) {
+    throw new Error('ClearLane demo mode requires crypto.subtle for password hashing.')
   }
 
-  let hash = 0
-  for (let index = 0; index < password.length; index += 1) {
-    const code = password.charCodeAt(index)
-    hash = ((hash << 5) - hash) + code
-    hash |= 0
-  }
-  return `fallback:${Math.abs(hash).toString(16)}`
+  const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  return `sha256:${bytesToHex(new Uint8Array(digest))}`
+}
+
+function findAuthenticatedDemoUser(users: DemoUserRecord[], normalizedEmail: string, passwordHash: string): DemoUserRecord | undefined {
+  return users.find((candidate) => {
+    return matchesNormalizedEmail(candidate.email, normalizedEmail)
+      && constantTimeEquals(candidate.passwordHash, passwordHash)
+  })
+}
+
+function updateDemoUsers(users: DemoUserRecord[], userId: string, patch: Partial<AuthUser>): DemoUserRecord[] {
+  return users.map((candidate) => {
+    if (candidate.id !== userId) return candidate
+    return mergeDemoUser(candidate, patch)
+  })
 }
 
 function createId(): string {
@@ -324,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const passwordHash = await hashPassword(password)
 
     if (!db) {
-      const existing = loadDemoUsers().find((candidate) => matchesNormalizedEmail(candidate.email, normalizedEmail) && constantTimeEquals(candidate.passwordHash, passwordHash))
+      const existing = findAuthenticatedDemoUser(loadDemoUsers(), normalizedEmail, passwordHash)
       if (!existing) return false
 
       const session = loadSession()
@@ -406,12 +414,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!db) {
       const users = loadDemoUsers()
-      const nextUsers = users.map((candidate) => {
-        if (candidate.id !== userId) return candidate
-        return mergeDemoUser(candidate, {
-          ...data,
-          name: data.name ?? candidate.name,
-        })
+      const existingUser = users.find((candidate) => candidate.id === userId)
+      if (!existingUser) return
+
+      const nextUsers = updateDemoUsers(users, userId, {
+        ...data,
+        name: data.name ?? existingUser.name,
       })
 
       saveDemoUsers(nextUsers)
@@ -450,7 +458,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!db) {
         const users = loadDemoUsers()
-        saveDemoUsers(users.map((candidate) => candidate.id === nextUser.id ? mergeDemoUser(candidate, patch) : candidate))
+        saveDemoUsers(updateDemoUsers(users, nextUser.id, patch))
       } else {
         void db
           .from('users')

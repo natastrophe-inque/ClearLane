@@ -189,7 +189,7 @@ function MainApp() {
             onBack={() => setShowAuth(false)}
             onSignIn={login}
             onSignUp={signup}
-            notice={isSupabaseConfigured ? undefined : 'Demo mode stores credentials in this browser only. Use a throwaway password for local development.'}
+            notice={isSupabaseConfigured ? undefined : 'Demo mode stores credentials in this browser only. Never use a real password in demo mode.'}
           />
         </div>
       )

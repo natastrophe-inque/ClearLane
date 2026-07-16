@@ -28,6 +28,6 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 if (!isSupabaseConfigured && import.meta.env.DEV) {
   console.warn(
-    `Supabase environment variables are missing (${missingSupabaseEnvVars.join(', ')}). Running ClearLane in local demo mode.`,
+    `Supabase environment variables are missing (${missingSupabaseEnvVars.join(', ')}). Running ClearLane in local demo mode. See README.md for setup instructions.`,
   )
 }
