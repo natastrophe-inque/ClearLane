@@ -1,217 +1,183 @@
 import { useState } from 'react'
+import {
+  CheckCircle2,
+  CloudOff,
+  Database,
+  LogOut,
+  Moon,
+  PlayCircle,
+  ShieldCheck,
+  Sun,
+  Terminal,
+} from 'lucide-react'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import WelcomeScreen from '@/components/WelcomeScreen'
 import OnboardingWizard from '@/components/OnboardingWizard'
 import AuthScreen from '@/components/AuthScreen'
-import TabBar from '@/components/TabBar'
-import HomeDashboard from '@/components/HomeDashboard'
-import PracticeScreen from '@/components/PracticeScreen'
-import HazardPerceptionTrainer from '@/components/HazardPerceptionTrainer'
-import IntersectionTrainer from '@/components/IntersectionTrainer'
-import LanePositioningTrainer from '@/components/LanePositioningTrainer'
-import RoadTestPrep from '@/components/RoadTestPrep'
-import TestRoutePractice from '@/components/TestRoutePractice'
-import AIDrivingCoach from '@/components/AIDrivingCoach'
-import DriveScreen from '@/components/DriveScreen'
-import RealDriveAnalysis from '@/components/RealDriveAnalysis'
-import DriverConfidenceMode from '@/components/DriverConfidenceMode'
-import DriveTracker from '@/components/DriveTracker'
-import DriveSummary from '@/components/DriveSummary'
-import ProgressScreen from '@/components/ProgressScreen'
-import ProfileScreen from '@/components/ProfileScreen'
 import { useTheme } from '@/hooks/useTheme'
-import {
-  mockConfidence,
-  mockReadiness,
-  mockAchievements,
-  mockBadges,
-  mockHazardScenarios,
-  mockIntersectionScenarios,
-  mockLaneScenarios,
-  mockRoadTestQuestions,
-  mockTestResults,
-  mockRoutes,
-  mockCoachMessages,
-  mockDrivingInsights,
-  mockBreathingExercises,
-  mockAnxietyLogs,
-  mockCheckIns,
-  mockSkillTree,
-} from '@/data/mockData'
-import type { User, TabId } from '@/types'
-import type { AuthUser } from '@/hooks/useAuth'
-import type { DriveSession } from '@/hooks/useDriveTracker'
+import { isSupabaseConfigured, missingSupabaseEnvVars } from '@/lib/supabase'
 
-type Screen =
-  | { id: 'home' }
-  | { id: 'practice' }
-  | { id: 'hazard_trainer' }
-  | { id: 'intersection_trainer' }
-  | { id: 'lane_trainer' }
-  | { id: 'road_test_prep' }
-  | { id: 'test_route_practice' }
-  | { id: 'ai_coach' }
-  | { id: 'drive' }
-  | { id: 'real_drive_analysis' }
-  | { id: 'confidence_mode' }
-  | { id: 'drive_tracker' }
-  | { id: 'drive_summary'; session: DriveSession }
-  | { id: 'progress' }
-  | { id: 'profile' }
+const demoHighlights = [
+  'Step through the welcome, signup, signin, and onboarding flows with no secrets.',
+  'Persist local demo accounts in your browser so refreshes keep your state.',
+  'Toggle theme settings and inspect the mobile-first UI shell while you build.',
+]
 
-function userFromAuth(au: AuthUser): User {
-  return {
-    name: au.name,
-    level: au.levelName,
-    levelNumber: au.levelNumber,
-    xp: au.xp,
-    xpToNextLevel: 500,
-    testDate: au.testDate,
-    testType: au.testType,
-    learningGoals: au.goals,
-    streakDays: au.streakDays,
-    totalSessions: au.totalSessions,
-    joinedDate: new Date().toISOString().split('T')[0],
-    avatarUrl: '',
+const practicePlan = [
+  {
+    title: 'Warm up your confidence',
+    description: 'Review your goals, note how you feel today, and pick one easy driving win.',
+  },
+  {
+    title: 'Prep your next practice drive',
+    description: 'Use demo mode to iterate on UI and content before wiring in Supabase-backed data.',
+  },
+  {
+    title: 'Enable Supabase when ready',
+    description: 'Copy .env.example to .env.local and fill in the real values to switch out of demo mode.',
+  },
+]
+
+function Dashboard() {
+  const { logout, user } = useAuth()
+  const { settings, updateSettings } = useTheme()
+
+  if (!user) return null
+
+  const toggleTheme = () => {
+    updateSettings({ darkMode: settings.darkMode === 'dark' ? 'light' : 'dark' })
   }
-}
 
-const fallbackUser: User = {
-  name: 'Driver',
-  level: 'Getting Started',
-  levelNumber: 1,
-  xp: 0,
-  xpToNextLevel: 500,
-  testDate: null,
-  testType: 'none',
-  learningGoals: [],
-  streakDays: 0,
-  totalSessions: 0,
-  joinedDate: new Date().toISOString().split('T')[0],
-  avatarUrl: '',
+  return (
+    <div className="app-shell">
+      <div className="flex-1 overflow-y-auto px-6 pb-10 pt-safe pt-8 space-y-6">
+        <header className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-brand-600 dark:text-brand-400">Welcome back</p>
+              <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">{user.name || 'Driver'}</h1>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                ClearLane is running locally{isSupabaseConfigured ? ' with Supabase enabled.' : ' in demo mode with browser-only storage.'}
+              </p>
+            </div>
+            <button onClick={toggleTheme} className="btn-secondary btn-sm px-3" aria-label="Toggle theme">
+              {settings.darkMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
+
+          <div className="card gradient-brand text-white border-0">
+            <div className="flex items-center gap-3">
+              {isSupabaseConfigured ? <Database size={20} /> : <CloudOff size={20} />}
+              <div>
+                <p className="text-sm font-semibold">{isSupabaseConfigured ? 'Supabase connected' : 'Local demo mode active'}</p>
+                <p className="text-xs text-white/80">
+                  {isSupabaseConfigured
+                    ? 'Backend-backed auth flows are enabled for this environment.'
+                    : 'Missing environment variables are handled gracefully so you can keep developing.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {!isSupabaseConfigured && (
+          <section className="card space-y-3">
+            <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+              <ShieldCheck size={18} className="text-brand-600 dark:text-brand-400" />
+              <h2 className="text-base font-bold">Optional Supabase setup</h2>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              You can keep using the app without secrets. To enable backend-backed data later, provide these variables in <code>.env.local</code>:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {missingSupabaseEnvVars.map((variable) => (
+                <span key={variable} className="badge bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
+                  {variable}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="card space-y-4">
+          <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+            <PlayCircle size={18} className="text-brand-600 dark:text-brand-400" />
+            <h2 className="text-base font-bold">Local dev checklist</h2>
+          </div>
+          <div className="space-y-3">
+            {demoHighlights.map((highlight) => (
+              <div key={highlight} className="flex items-start gap-3">
+                <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-500" />
+                <p className="text-sm text-gray-600 dark:text-gray-300">{highlight}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 px-1 text-gray-900 dark:text-white">
+            <Terminal size={18} className="text-brand-600 dark:text-brand-400" />
+            <h2 className="text-base font-bold">Suggested next steps</h2>
+          </div>
+          {practicePlan.map((item) => (
+            <article key={item.title} className="card-interactive">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">{item.title}</h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.description}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="card space-y-3">
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">Your profile snapshot</h2>
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-gray-400">Road test</dt>
+              <dd className="font-semibold text-gray-900 dark:text-white">{user.testType === 'none' ? 'Still exploring' : user.testType}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-400">Anxiety level</dt>
+              <dd className="font-semibold text-gray-900 dark:text-white">{user.anxietyLevel}/5</dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-gray-400">Goals</dt>
+              <dd className="mt-1 flex flex-wrap gap-2">
+                {user.goals.length > 0 ? user.goals.map((goal) => (
+                  <span key={goal} className="badge bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">{goal}</span>
+                )) : <span className="text-gray-500 dark:text-gray-400">Complete onboarding to personalize this dashboard.</span>}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      <div className="border-t border-gray-200 px-6 py-4 dark:border-gray-800">
+        <button onClick={logout} className="btn-secondary w-full">
+          <LogOut size={18} />
+          Sign out
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function MainApp() {
-  const { isAuthenticated, isOnboarded, user, authLoading, login, signup, completeOnboarding } = useAuth()
+  const { isAuthenticated, isOnboarded, authLoading, login, signup, completeOnboarding } = useAuth()
   const [authScreenMode, setAuthScreenMode] = useState<'signin' | 'signup'>('signup')
   const [showAuth, setShowAuth] = useState(false)
-  const { settings, updateSettings } = useTheme()
 
-  // Main app routing
-  const [activeTab, setActiveTab] = useState<TabId>('home')
-  const [screen, setScreen] = useState<Screen>({ id: 'home' })
-
-  const navigate = (s: Screen) => {
-    setScreen(s)
-    const tabMap: Record<string, TabId> = {
-      home: 'home', practice: 'practice', hazard_trainer: 'practice',
-      intersection_trainer: 'practice', lane_trainer: 'practice',
-      road_test_prep: 'practice', test_route_practice: 'practice',
-      ai_coach: 'home', drive: 'drive', real_drive_analysis: 'drive',
-      confidence_mode: 'drive', drive_tracker: 'drive', drive_summary: 'drive',
-      progress: 'progress', profile: 'profile',
-    }
-    setActiveTab(tabMap[s.id] ?? 'home')
-  }
-
-  const handleTabChange = (tab: TabId) => {
-    setActiveTab(tab)
-    switch (tab) {
-      case 'home': setScreen({ id: 'home' }); break
-      case 'practice': setScreen({ id: 'practice' }); break
-      case 'drive': setScreen({ id: 'drive' }); break
-      case 'progress': setScreen({ id: 'progress' }); break
-      case 'profile': setScreen({ id: 'profile' }); break
-    }
-  }
-
-  const back = () => {
-    const backMap: Record<string, () => void> = {
-      hazard_trainer: () => setScreen({ id: 'practice' }),
-      intersection_trainer: () => setScreen({ id: 'practice' }),
-      lane_trainer: () => setScreen({ id: 'practice' }),
-      road_test_prep: () => setScreen({ id: 'practice' }),
-      test_route_practice: () => setScreen({ id: 'practice' }),
-      ai_coach: () => { setScreen({ id: 'home' }); setActiveTab('home') },
-      real_drive_analysis: () => setScreen({ id: 'drive' }),
-      confidence_mode: () => setScreen({ id: 'drive' }),
-      drive_tracker: () => setScreen({ id: 'drive' }),
-      drive_summary: () => setScreen({ id: 'drive' }),
-    }
-    backMap[screen.id]?.()
-  }
-
-  const currentUser: User = user ? userFromAuth(user) : fallbackUser
-
-  const handleSignIn = async (email: string, password: string): Promise<boolean> => {
-    return await login(email, password)
-  }
-
-  const handleSignUp = async (email: string, password: string, name: string): Promise<boolean> => {
-    return await signup(email, password, name)
-  }
-
-  const renderScreen = () => {
-    switch (screen.id) {
-      case 'home':
-        return (
-          <HomeDashboard
-            user={currentUser}
-            confidence={mockConfidence}
-            readiness={mockReadiness}
-            achievements={mockAchievements}
-            onStartTraining={() => navigate({ id: 'practice' })}
-            onViewCoach={() => navigate({ id: 'ai_coach' })}
-          />
-        )
-      case 'practice':
-        return (
-          <PracticeScreen
-            onSelectTrainer={(trainer) => {
-              switch (trainer) {
-                case 'hazard': navigate({ id: 'hazard_trainer' }); break
-                case 'intersection': navigate({ id: 'intersection_trainer' }); break
-                case 'lane': navigate({ id: 'lane_trainer' }); break
-              }
-            }}
-          />
-        )
-      case 'hazard_trainer': return <HazardPerceptionTrainer scenarios={mockHazardScenarios} onBack={back} />
-      case 'intersection_trainer': return <IntersectionTrainer scenarios={mockIntersectionScenarios} onBack={back} />
-      case 'lane_trainer': return <LanePositioningTrainer scenarios={mockLaneScenarios} onBack={back} />
-      case 'road_test_prep': return <RoadTestPrep readiness={mockReadiness} questions={mockRoadTestQuestions} mockResults={mockTestResults} onBack={back} />
-      case 'test_route_practice': return <TestRoutePractice routes={mockRoutes} onBack={back} />
-      case 'ai_coach': return <AIDrivingCoach messages={mockCoachMessages} onBack={back} />
-      case 'drive': return <DriveScreen insights={mockDrivingInsights} onAnalyze={() => navigate({ id: 'real_drive_analysis' })} onConfidenceMode={() => navigate({ id: 'confidence_mode' })} onRealDrive={() => navigate({ id: 'drive_tracker' })} />
-      case 'real_drive_analysis': return <RealDriveAnalysis insights={mockDrivingInsights} onBack={back} />
-      case 'confidence_mode': return <DriverConfidenceMode exercises={mockBreathingExercises} anxietyLogs={mockAnxietyLogs} checkIns={mockCheckIns} onBack={back} />
-      case 'drive_tracker': return <DriveTracker onStop={(s) => navigate({ id: 'drive_summary', session: s })} onBack={back} />
-      case 'drive_summary': return <DriveSummary session={screen.session} onDone={back} />
-      case 'progress': return <ProgressScreen user={currentUser} confidence={mockConfidence} achievements={mockAchievements} badges={mockBadges} skillTree={mockSkillTree} />
-      case 'profile':
-        return <ProfileScreen user={currentUser} settings={settings} onUpdateSettings={updateSettings} />
-      default: return null
-    }
-  }
-
-  const mainScreens: string[] = ['home', 'practice', 'drive', 'progress', 'profile']
-  const showTabBar = mainScreens.includes(screen.id)
-
-  // Loading
   if (authLoading) {
     return (
       <div className="app-shell flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-16 h-16 rounded-2xl gradient-brand flex items-center justify-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-brand">
             <span className="text-2xl">🛣️</span>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Loading...</p>
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Loading ClearLane…</p>
         </div>
       </div>
     )
   }
 
-  // Not authenticated → Welcome or Auth
   if (!isAuthenticated) {
     if (showAuth) {
       return (
@@ -219,23 +185,29 @@ function MainApp() {
           <AuthScreen
             mode={authScreenMode}
             onBack={() => setShowAuth(false)}
-            onSignIn={handleSignIn}
-            onSignUp={handleSignUp}
+            onSignIn={login}
+            onSignUp={signup}
           />
         </div>
       )
     }
+
     return (
       <div className="app-shell">
         <WelcomeScreen
-          onGetStarted={() => { setAuthScreenMode('signup'); setShowAuth(true) }}
-          onSignIn={() => { setAuthScreenMode('signin'); setShowAuth(true) }}
+          onGetStarted={() => {
+            setAuthScreenMode('signup')
+            setShowAuth(true)
+          }}
+          onSignIn={() => {
+            setAuthScreenMode('signin')
+            setShowAuth(true)
+          }}
         />
       </div>
     )
   }
 
-  // Authenticated but not onboarded
   if (!isOnboarded) {
     return (
       <div className="app-shell">
@@ -244,13 +216,7 @@ function MainApp() {
     )
   }
 
-  // Full app
-  return (
-    <div data-component="src/App.tsx" className="app-shell">
-      {renderScreen()}
-      {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
-    </div>
-  )
+  return <Dashboard />
 }
 
 export default function App() {

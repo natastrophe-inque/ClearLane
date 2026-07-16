@@ -32,8 +32,5 @@ export default defineConfig({
       'Pragma': 'no-cache',
       'Expires': '0',
     },
-    hmr: {
-      clientPort: 443
-    }
   }
 })
