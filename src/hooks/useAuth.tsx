@@ -1,5 +1,13 @@
-import { useState, createContext, useContext, useCallback, useEffect, type ReactNode } from 'react'
-import { supabase, supabaseSchema } from '@/lib/supabase'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+import { isSupabaseConfigured, supabase, supabaseSchema } from '@/lib/supabase'
 
 export interface AuthUser {
   id: string
@@ -31,41 +39,34 @@ interface AuthState {
   updateUser: (patch: Partial<AuthUser>) => void
 }
 
+interface StoredSession {
+  userId: string | null
+  isOnboarded: boolean
+}
+
+interface DemoUserRecord extends AuthUser {
+  passwordHash: string
+}
+
 const SESSION_KEY = 'clearlane-session'
+const DEMO_USERS_KEY = 'clearlane-demo-users'
+const DEMO_PASSWORD_SALT = 'clearlane-demo-auth'
 
-function saveSession(userId: string, isOnboarded: boolean) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, isOnboarded }))
+const defaultUserValues = {
+  testType: 'none' as const,
+  testDate: null,
+  anxietyLevel: 3,
+  goals: [] as string[],
+  voicePref: false,
+  darkMode: 'system' as const,
+  levelName: 'Getting Started',
+  levelNumber: 1,
+  xp: 0,
+  streakDays: 0,
+  totalSessions: 0,
 }
 
-function loadSession(): { userId: string | null; isOnboarded: boolean } {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      return { userId: parsed.userId ?? null, isOnboarded: !!parsed.isOnboarded }
-    }
-  } catch { /* ignore */ }
-  return { userId: null, isOnboarded: false }
-}
-
-function clearSession() {
-  localStorage.removeItem(SESSION_KEY)
-}
-
-const db = supabase.schema(supabaseSchema)
-
-function hashPassword(pw: string): string {
-  // Simple hash for demo ‚Äî not production-grade
-  let hash = 0
-  for (let i = 0; i < pw.length; i++) {
-    const chr = pw.charCodeAt(i)
-    hash = ((hash << 5) - hash) + chr
-    hash |= 0
-  }
-  return `hash:${Math.abs(hash).toString(16)}`
-}
-
-const AuthContext = createContext<AuthState>({
+const defaultAuthState: AuthState = {
   isAuthenticated: false,
   isOnboarded: false,
   user: null,
@@ -76,32 +77,201 @@ const AuthContext = createContext<AuthState>({
   completeOnboarding: async () => {},
   logout: () => {},
   updateUser: () => {},
-})
+}
+
+function saveSession(userId: string, isOnboarded: boolean) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, isOnboarded }))
+}
+
+function loadSession(): StoredSession {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<StoredSession>
+      return {
+        userId: parsed.userId ?? null,
+        isOnboarded: parsed.isOnboarded === true,
+      }
+    }
+  } catch {
+    // Ignore malformed local state and fall back to a signed-out session.
+  }
+
+  return { userId: null, isOnboarded: false }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY)
+}
+
+function isDemoUserRecord(candidate: unknown): candidate is DemoUserRecord {
+  if (typeof candidate !== 'object' || candidate === null) return false
+
+  const value = candidate as Partial<DemoUserRecord>
+  return typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.email === 'string'
+    && typeof value.passwordHash === 'string'
+    && (value.testType === 'G2' || value.testType === 'G' || value.testType === 'none')
+    && (value.testDate === null || typeof value.testDate === 'string')
+    && typeof value.anxietyLevel === 'number'
+    && Array.isArray(value.goals)
+    && typeof value.voicePref === 'boolean'
+    && (value.darkMode === 'light' || value.darkMode === 'dark' || value.darkMode === 'system')
+    && typeof value.levelName === 'string'
+    && typeof value.levelNumber === 'number'
+    && typeof value.xp === 'number'
+    && typeof value.streakDays === 'number'
+    && typeof value.totalSessions === 'number'
+}
+
+function loadDemoUsers(): DemoUserRecord[] {
+  try {
+    const raw = localStorage.getItem(DEMO_USERS_KEY)
+    if (!raw) return []
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed.filter(isDemoUserRecord)
+  } catch {
+    return []
+  }
+}
+
+function saveDemoUsers(users: DemoUserRecord[]) {
+  localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(users))
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  if (left.length !== right.length) return false
+
+  let mismatch = 0
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  }
+
+  return mismatch === 0
+}
+
+function matchesNormalizedEmail(candidateEmail: string, normalizedEmail: string): boolean {
+  return candidateEmail.trim().toLowerCase() === normalizedEmail
+}
+
+async function hashPassword(password: string): Promise<string> {
+  if (!('crypto' in globalThis) || !globalThis.crypto.subtle) {
+    throw new Error('ClearLane demo mode requires a modern browser with crypto.subtle support. Please use a recent version of Chrome, Firefox, Safari, or Edge.')
+  }
+
+  // Demo-only browser hash for local development. Do not copy this approach into production auth.
+  const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  return `sha256:${bytesToHex(new Uint8Array(digest))}`
+}
+
+function findAuthenticatedDemoUser(users: DemoUserRecord[], normalizedEmail: string, passwordHash: string): DemoUserRecord | undefined {
+  return users.find((candidate) => {
+    return matchesNormalizedEmail(candidate.email, normalizedEmail)
+      && constantTimeEquals(candidate.passwordHash, passwordHash)
+  })
+}
+
+function updateDemoUsers(users: DemoUserRecord[], userId: string, patch: Partial<AuthUser>): DemoUserRecord[] {
+  return users.map((candidate) => {
+    if (candidate.id !== userId) return candidate
+    return mergeDemoUser(candidate, patch)
+  })
+}
+
+function createId(): string {
+  if ('crypto' in globalThis && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  if ('crypto' in globalThis && typeof globalThis.crypto.getRandomValues === 'function') {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = bytesToHex(bytes)
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+
+  throw new Error('ClearLane demo mode requires a modern browser with secure random number support. Please update to a current version of Chrome, Firefox, Safari, or Edge.')
+}
+
+function mergeDemoUser(record: DemoUserRecord, patch: Partial<AuthUser>): DemoUserRecord {
+  return {
+    ...record,
+    ...patch,
+    passwordHash: record.passwordHash,
+  }
+}
+
+function toAuthUser(record: DemoUserRecord): AuthUser {
+  const { passwordHash: _passwordHash, ...user } = record
+  return user
+}
 
 function dbUserToAuthUser(row: Record<string, unknown>): AuthUser {
   let goals: string[] = []
+
   try {
-    if (typeof row.goals === 'string' && row.goals) goals = JSON.parse(row.goals)
-    else if (Array.isArray(row.goals)) goals = row.goals as string[]
-  } catch { goals = [] }
+    if (typeof row.goals === 'string' && row.goals.trim()) {
+      const parsedGoals = JSON.parse(row.goals)
+      goals = Array.isArray(parsedGoals)
+        ? parsedGoals.filter((goal): goal is string => typeof goal === 'string')
+        : []
+    } else if (Array.isArray(row.goals)) {
+      goals = row.goals.filter((goal): goal is string => typeof goal === 'string')
+    }
+  } catch {
+    goals = []
+  }
+
+  if (typeof row.id !== 'string') {
+    throw new Error('User data retrieved from Supabase is missing a valid id field.')
+  }
 
   return {
-    id: row.id as string,
-    name: row.name as string,
-    email: row.email as string,
-    testType: (row.test_type as 'G2' | 'G' | 'none') ?? 'none',
-    testDate: (row.test_date as string) ?? null,
-    anxietyLevel: (row.anxiety_level as number) ?? 5,
+    id: row.id,
+    name: typeof row.name === 'string' ? row.name : 'Driver',
+    email: typeof row.email === 'string' ? row.email : '',
+    testType: row.test_type === 'G2' || row.test_type === 'G' ? row.test_type : 'none',
+    testDate: typeof row.test_date === 'string' && row.test_date ? row.test_date : null,
+    anxietyLevel: typeof row.anxiety_level === 'number' ? row.anxiety_level : defaultUserValues.anxietyLevel,
     goals,
-    voicePref: false,
-    darkMode: 'system',
-    levelName: (row.level_name as string) ?? 'Getting Started',
-    levelNumber: (row.level_number as number) ?? 1,
-    xp: (row.xp as number) ?? 0,
-    streakDays: (row.streak_days as number) ?? 0,
-    totalSessions: (row.total_sessions as number) ?? 0,
+    voicePref: defaultUserValues.voicePref,
+    darkMode: defaultUserValues.darkMode,
+    levelName: typeof row.level_name === 'string' ? row.level_name : defaultUserValues.levelName,
+    levelNumber: typeof row.level_number === 'number' ? row.level_number : defaultUserValues.levelNumber,
+    xp: typeof row.xp === 'number' ? row.xp : defaultUserValues.xp,
+    streakDays: typeof row.streak_days === 'number' ? row.streak_days : defaultUserValues.streakDays,
+    totalSessions: typeof row.total_sessions === 'number' ? row.total_sessions : defaultUserValues.totalSessions,
   }
 }
+
+function authPatchToDbPatch(patch: Partial<AuthUser>) {
+  const dbPatch: Record<string, unknown> = {}
+
+  if (patch.name !== undefined) dbPatch.name = patch.name
+  if (patch.testType !== undefined) dbPatch.test_type = patch.testType
+  if (patch.testDate !== undefined) dbPatch.test_date = patch.testDate
+  if (patch.anxietyLevel !== undefined) dbPatch.anxiety_level = patch.anxietyLevel
+  if (patch.goals !== undefined) dbPatch.goals = JSON.stringify(patch.goals)
+  if (patch.levelName !== undefined) dbPatch.level_name = patch.levelName
+  if (patch.levelNumber !== undefined) dbPatch.level_number = patch.levelNumber
+  if (patch.xp !== undefined) dbPatch.xp = patch.xp
+  if (patch.streakDays !== undefined) dbPatch.streak_days = patch.streakDays
+  if (patch.totalSessions !== undefined) dbPatch.total_sessions = patch.totalSessions
+
+  return dbPatch
+}
+
+const AuthContext = createContext<AuthState>(defaultAuthState)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -109,107 +279,229 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isOnboarded, setIsOnboarded] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
 
-  // Restore session on mount
-  useEffect(() => {
-    const session = loadSession()
-    if (session.userId) {
-      setUserId(session.userId)
-      setIsOnboarded(session.isOnboarded)
-      // Fetch the full user from DB
-      db.from('users')
-        .select('*')
-        .eq('id', session.userId)
-        .single()
-        .then(({ data, error }) => {
-          if (!error && data) {
-            setUser(dbUserToAuthUser(data))
-            setIsOnboarded(data.is_onboarded === true || session.isOnboarded)
-          }
-          setAuthLoading(false)
-        })
-    } else {
-      setAuthLoading(false)
-    }
+  const db = useMemo(() => {
+    if (!isSupabaseConfigured || !supabase) return null
+    return supabase.schema(supabaseSchema)
   }, [])
 
+  const applyAuthenticatedUser = useCallback((nextUser: AuthUser, onboarded: boolean) => {
+    setUser(nextUser)
+    setUserId(nextUser.id)
+    setIsOnboarded(onboarded)
+    saveSession(nextUser.id, onboarded)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const restoreSession = async () => {
+      const session = loadSession()
+      if (!session.userId) {
+        setAuthLoading(false)
+        return
+      }
+
+      if (!db) {
+        const storedUser = loadDemoUsers().find((candidate) => candidate.id === session.userId)
+        if (!storedUser) {
+          clearSession()
+          if (!cancelled) setAuthLoading(false)
+          return
+        }
+
+        if (!cancelled) {
+          applyAuthenticatedUser(toAuthUser(storedUser), session.isOnboarded)
+          setAuthLoading(false)
+        }
+        return
+      }
+
+      const { data, error } = await db
+        .from('users')
+        .select('*')
+        .eq('id', session.userId)
+        .maybeSingle()
+
+      if (cancelled) return
+
+      if (error || !data) {
+        clearSession()
+        setAuthLoading(false)
+        return
+      }
+
+      const nextUser = dbUserToAuthUser(data as Record<string, unknown>)
+      const onboarded = (data as { is_onboarded?: unknown }).is_onboarded === true || session.isOnboarded
+      applyAuthenticatedUser(nextUser, onboarded)
+      setAuthLoading(false)
+    }
+
+    void restoreSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyAuthenticatedUser, db])
+
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    const pwHash = hashPassword(password)
+    const normalizedEmail = email.trim().toLowerCase()
+    const passwordHash = await hashPassword(password)
+
+    if (!db) {
+      const existing = findAuthenticatedDemoUser(loadDemoUsers(), normalizedEmail, passwordHash)
+      if (!existing) return false
+
+      const session = loadSession()
+      const onboarded = session.userId === existing.id ? session.isOnboarded : existing.goals.length > 0
+      applyAuthenticatedUser(toAuthUser(existing), onboarded)
+      return true
+    }
+
     const { data, error } = await db
       .from('users')
       .select('*')
-      .eq('email', email)
-      .eq('password_hash', pwHash)
-      .single()
+      .eq('email', normalizedEmail)
+      .eq('password_hash', passwordHash)
+      .maybeSingle()
 
     if (error || !data) return false
 
-    const u = dbUserToAuthUser(data)
-    setUser(u)
-    setUserId(u.id)
-    setIsOnboarded(data.is_onboarded === true)
-    saveSession(u.id, data.is_onboarded === true)
+    const nextUser = dbUserToAuthUser(data as Record<string, unknown>)
+    const onboarded = (data as { is_onboarded?: unknown }).is_onboarded === true
+    applyAuthenticatedUser(nextUser, onboarded)
     return true
-  }, [])
+  }, [applyAuthenticatedUser, db])
 
   const signup = useCallback(async (email: string, password: string, name: string): Promise<boolean> => {
-    // Check if email already exists
+    const normalizedEmail = email.trim().toLowerCase()
+
+    if (!db) {
+      const users = loadDemoUsers()
+      if (users.some((candidate) => matchesNormalizedEmail(candidate.email, normalizedEmail))) {
+        return false
+      }
+
+      const newUser: DemoUserRecord = {
+        id: createId(),
+        name: name.trim(),
+        email: normalizedEmail,
+        passwordHash: await hashPassword(password),
+        ...defaultUserValues,
+      }
+
+      saveDemoUsers([...users, newUser])
+      applyAuthenticatedUser(toAuthUser(newUser), false)
+      return true
+    }
+
     const { data: existing } = await db
       .from('users')
       .select('id')
-      .eq('email', email)
-      .single()
+      .eq('email', normalizedEmail)
+      .maybeSingle()
 
     if (existing) return false
 
-    const pwHash = hashPassword(password)
     const { data, error } = await db
       .from('users')
       .insert({
-        name,
-        email,
-        password_hash: pwHash,
+        name: name.trim(),
+        email: normalizedEmail,
+        password_hash: await hashPassword(password),
         is_onboarded: false,
-        test_type: 'none',
-        level_name: 'Getting Started',
-        level_number: 1,
-        xp: 0,
-        streak_days: 0,
-        total_sessions: 0,
+        test_type: defaultUserValues.testType,
+        level_name: defaultUserValues.levelName,
+        level_number: defaultUserValues.levelNumber,
+        xp: defaultUserValues.xp,
+        streak_days: defaultUserValues.streakDays,
+        total_sessions: defaultUserValues.totalSessions,
       })
       .select('*')
       .single()
 
     if (error || !data) return false
-à€€ú›HHï\Ÿ\ï–]]\Ÿ\ä]JBàŸ]\Ÿ\äJBàŸ]\Ÿ\íY
-KöY
-BàŸ]\”€òõÿ\ôY
-ò[ŸJBàÿ]ôTŸ\‹⁄[€äKöYò[ŸJBàô]\õàùYBàK◊JBÇà€€ú›€€\]S€òõÿ\ô[ô»H\ŸPÿ[òX⁄ \ﬁ[ò»
-]Nà\ùX[]]\Ÿ\èäHOà¬àYà
-]\Ÿ\íY
-Hô]\õÇà€€ú›\]\ŒàôX€‹ô›ö[ôÀ[ö€õ›€èàH¬à\◊€€òõÿ\ôYàùYKàBàYà
-]Kõò[YJH\]\Àõò[YHH]Kõò[YBàYà
-]Kù\›\JH\]\Àù\››\HH]Kù\›\BàYà
-]Kù\›]HOOH[ôYö[ôY
-H\]\Àù\›Ÿ]HH]Kù\›]BàYà
-]Kò[ûY]S]ô[
-H\]\Àò[ûY]W€]ô[H]Kò[ûY]S]ô[àYà
-]Kô€ÿ[ H\]\Àô€ÿ[»Hî””ãú›ö[ô⁄YûJ]Kô€ÿ[ BÇà€€ú›»\úõ‹àHH]ÿZ]Çàôúõ€J	›\Ÿ\ú… Bàù\]J\]\ Bàô\J	⁄Y	À\Ÿ\íY
-BÇàYà
-Y\úõ‹äH¬àŸ]\Ÿ\ä
-ô]äHOàô]à»»ããúô]ãããô]K\”€òõÿ\ôYàùYHH\»]]\Ÿ\ààô]äBàŸ]\”€òõÿ\ôY
-ùYJBàÿ]ôTŸ\‹⁄[€ä\Ÿ\íYùYJBàBàK›\Ÿ\íYJBÇà€€ú›Ÿ€›]H\ŸPÿ[òX⁄ 
 
-HOà¬àŸ]\Ÿ\äù[
-BàŸ]\Ÿ\íY
-ù[
-BàŸ]\”€òõÿ\ôY
-ò[ŸJBà€X\îŸ\‹⁄[€ä
-BàK◊JBÇà€€ú›\]U\Ÿ\àH\ŸPÿ[òX⁄ 
-]⁄à\ùX[]]\Ÿ\èäHOà¬àŸ]\Ÿ\ä
-ô]äHOàô]à»»ããúô]ãããú]⁄Hàô]äBàK◊JBÇà€€ú›\–]][ùXÿ]YHH]\Ÿ\íY	âàH]\Ÿ\ÇÇàô]\õà
-à]]€€ù^îõ›öY\àò[YO^ﬁ¬à\–]][ùXÿ]Yà\”€òõÿ\ôYà\Ÿ\ãà\Ÿ\íYà]]ÿY[ôÀàŸ⁄[ãà⁄Y€ù\à€€\]S€òõÿ\ô[ôÀàŸ€›]à\]U\Ÿ\ãà_OÇàÿ⁄[ô[üBà–]]€€ù^îõ›öY\èÇà
-BüBÇô^‹ùù[ò›[€à\ŸP]]
+    applyAuthenticatedUser(dbUserToAuthUser(data as Record<string, unknown>), false)
+    return true
+  }, [applyAuthenticatedUser, db])
 
-H¬àô]\õà\ŸP€€ù^
-]]€€ù^
-BüB
+  const completeOnboarding = useCallback(async (data: Partial<AuthUser>) => {
+    if (!userId) return
+
+    if (!db) {
+      const users = loadDemoUsers()
+      const existingUser = users.find((candidate) => candidate.id === userId)
+      if (!existingUser) return
+
+      const nextUsers = updateDemoUsers(users, userId, {
+        ...data,
+        name: data.name ?? existingUser.name,
+      })
+
+      saveDemoUsers(nextUsers)
+      setUser((previous) => previous ? { ...previous, ...data } : previous)
+      setIsOnboarded(true)
+      saveSession(userId, true)
+      return
+    }
+
+    const { error } = await db
+      .from('users')
+      .update({
+        ...authPatchToDbPatch(data),
+        is_onboarded: true,
+      })
+      .eq('id', userId)
+
+    if (error) return
+
+    setUser((previous) => previous ? { ...previous, ...data } : previous)
+    setIsOnboarded(true)
+    saveSession(userId, true)
+  }, [db, userId])
+
+  const logout = useCallback(() => {
+    clearSession()
+    setUser(null)
+    setUserId(null)
+    setIsOnboarded(false)
+  }, [])
+
+  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser((previous) => {
+      if (!previous) return previous
+      const nextUser = { ...previous, ...patch }
+
+      if (!db) {
+        const users = loadDemoUsers()
+        saveDemoUsers(updateDemoUsers(users, nextUser.id, patch))
+      } else {
+        void db
+          .from('users')
+          .update(authPatchToDbPatch(patch))
+          .eq('id', nextUser.id)
+      }
+
+      return nextUser
+    })
+  }, [db])
+
+  const value: AuthState = {
+    isAuthenticated: user !== null,
+    isOnboarded,
+    user,
+    userId,
+    authLoading,
+    login,
+    signup,
+    completeOnboarding,
+    logout,
+    updateUser,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth(): AuthState {
+  return useContext(AuthContext)
+}
