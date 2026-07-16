@@ -164,7 +164,7 @@ function matchesNormalizedEmail(candidateEmail: string, normalizedEmail: string)
 
 async function hashPassword(password: string): Promise<string> {
   if (!('crypto' in globalThis) || !globalThis.crypto.subtle) {
-    throw new Error('ClearLane demo mode requires crypto.subtle for password hashing.')
+    throw new Error('ClearLane demo mode requires a modern browser with crypto.subtle support. Please use a recent version of Chrome, Firefox, Safari, or Edge.')
   }
 
   const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
@@ -187,11 +187,19 @@ function updateDemoUsers(users: DemoUserRecord[], userId: string, patch: Partial
 }
 
 function createId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+  if ('crypto' in globalThis && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
   }
 
-  return `demo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  if ('crypto' in globalThis && typeof globalThis.crypto.getRandomValues === 'function') {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = bytesToHex(bytes)
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+
+  throw new Error('ClearLane demo mode requires a modern browser with secure random number support.')
 }
 
 function mergeDemoUser(record: DemoUserRecord, patch: Partial<AuthUser>): DemoUserRecord {
@@ -212,7 +220,10 @@ function dbUserToAuthUser(row: Record<string, unknown>): AuthUser {
 
   try {
     if (typeof row.goals === 'string' && row.goals.trim()) {
-      goals = JSON.parse(row.goals) as string[]
+      const parsedGoals = JSON.parse(row.goals)
+      goals = Array.isArray(parsedGoals)
+        ? parsedGoals.filter((goal): goal is string => typeof goal === 'string')
+        : []
     } else if (Array.isArray(row.goals)) {
       goals = row.goals.filter((goal): goal is string => typeof goal === 'string')
     }
@@ -220,8 +231,12 @@ function dbUserToAuthUser(row: Record<string, unknown>): AuthUser {
     goals = []
   }
 
+  if (typeof row.id !== 'string') {
+    throw new Error('Supabase user row is missing a string id.')
+  }
+
   return {
-    id: typeof row.id === 'string' ? row.id : createId(),
+    id: row.id,
     name: typeof row.name === 'string' ? row.name : 'Driver',
     email: typeof row.email === 'string' ? row.email : '',
     testType: row.test_type === 'G2' || row.test_type === 'G' ? row.test_type : 'none',
