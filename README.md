@@ -11,7 +11,7 @@ npm run dev
 
 Open http://localhost:5173.
 
-If you do not provide Supabase environment variables, the app starts in a safe local demo mode that stores sign-in and onboarding data in your browser.
+If you do not provide Supabase environment variables, the app starts in a safe local demo mode that stores sign-in and onboarding data in your browser. Use throwaway credentials in demo mode rather than a real password.
 
 ## Optional Supabase setup
 

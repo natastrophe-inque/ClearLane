@@ -57,7 +57,9 @@ function Dashboard() {
               <p className="text-sm font-medium text-brand-600 dark:text-brand-400">Welcome back</p>
               <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">{user.name || 'Driver'}</h1>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                ClearLane is running locally{isSupabaseConfigured ? ' with Supabase enabled.' : ' in demo mode with browser-only storage.'}
+                {isSupabaseConfigured
+                  ? 'ClearLane is running locally with Supabase enabled.'
+                  : 'ClearLane is running locally in demo mode with browser-only storage.'}
               </p>
             </div>
             <button onClick={toggleTheme} className="btn-secondary btn-sm px-3" aria-label="Toggle theme">
@@ -187,6 +189,7 @@ function MainApp() {
             onBack={() => setShowAuth(false)}
             onSignIn={login}
             onSignUp={signup}
+            notice={isSupabaseConfigured ? undefined : 'Demo mode stores credentials in this browser only. Use a throwaway password for local development.'}
           />
         </div>
       )

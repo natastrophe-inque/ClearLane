@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { ChevronLeft, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 
 interface AuthScreenProps {
   mode: 'signin' | 'signup'
   onBack: () => void
   onSignIn: (email: string, password: string) => Promise<boolean>
   onSignUp: (email: string, password: string, name: string) => Promise<boolean>
+  notice?: string
 }
 
-export default function AuthScreen({ mode: initialMode, onBack, onSignIn, onSignUp }: AuthScreenProps) {
+export default function AuthScreen({ mode: initialMode, onBack, onSignIn, onSignUp, notice }: AuthScreenProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -68,9 +69,19 @@ export default function AuthScreen({ mode: initialMode, onBack, onSignIn, onSign
           </p>
         </div>
         <div className="space-y-3">
+          {notice && <p className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">{notice}</p>}
           {mode === 'signup' && <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="input" />}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" className="input" />
-          <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="input" />
+          <div className="relative">
+            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="input pr-12" />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              className="absolute inset-y-0 right-3 my-auto text-xs font-medium text-gray-500 dark:text-gray-400"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
           <button onClick={handleSubmit} disabled={loading} className="btn-primary w-full py-4 text-base mt-2">
             {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : 'Create Account'}

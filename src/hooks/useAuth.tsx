@@ -50,6 +50,7 @@ interface DemoUserRecord extends AuthUser {
 
 const SESSION_KEY = 'clearlane-session'
 const DEMO_USERS_KEY = 'clearlane-demo-users'
+const DEMO_PASSWORD_SALT = 'clearlane-demo-auth'
 
 const defaultUserValues = {
   testType: 'none' as const,
@@ -63,6 +64,19 @@ const defaultUserValues = {
   xp: 0,
   streakDays: 0,
   totalSessions: 0,
+}
+
+const defaultAuthState: AuthState = {
+  isAuthenticated: false,
+  isOnboarded: false,
+  user: null,
+  userId: null,
+  authLoading: true,
+  login: async () => false,
+  signup: async () => false,
+  completeOnboarding: async () => {},
+  logout: () => {},
+  updateUser: () => {},
 }
 
 function saveSession(userId: string, isOnboarded: boolean) {
@@ -90,6 +104,27 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY)
 }
 
+function isDemoUserRecord(candidate: unknown): candidate is DemoUserRecord {
+  if (typeof candidate !== 'object' || candidate === null) return false
+
+  const value = candidate as Partial<DemoUserRecord>
+  return typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.email === 'string'
+    && typeof value.passwordHash === 'string'
+    && (value.testType === 'G2' || value.testType === 'G' || value.testType === 'none')
+    && (value.testDate === null || typeof value.testDate === 'string')
+    && typeof value.anxietyLevel === 'number'
+    && Array.isArray(value.goals)
+    && typeof value.voicePref === 'boolean'
+    && (value.darkMode === 'light' || value.darkMode === 'dark' || value.darkMode === 'system')
+    && typeof value.levelName === 'string'
+    && typeof value.levelNumber === 'number'
+    && typeof value.xp === 'number'
+    && typeof value.streakDays === 'number'
+    && typeof value.totalSessions === 'number'
+}
+
 function loadDemoUsers(): DemoUserRecord[] {
   try {
     const raw = localStorage.getItem(DEMO_USERS_KEY)
@@ -98,9 +133,7 @@ function loadDemoUsers(): DemoUserRecord[] {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
 
-    return parsed.filter((candidate): candidate is DemoUserRecord => {
-      return typeof candidate === 'object' && candidate !== null && typeof candidate.id === 'string' && typeof candidate.email === 'string'
-    })
+    return parsed.filter(isDemoUserRecord)
   } catch {
     return []
   }
@@ -110,14 +143,21 @@ function saveDemoUsers(users: DemoUserRecord[]) {
   localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(users))
 }
 
-function hashPassword(password: string): string {
+async function hashPassword(password: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
+    const digest = await crypto.subtle.digest('SHA-256', encoded)
+    const hex = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
+    return `sha256:${hex}`
+  }
+
   let hash = 0
   for (let index = 0; index < password.length; index += 1) {
     const code = password.charCodeAt(index)
     hash = ((hash << 5) - hash) + code
     hash |= 0
   }
-  return `hash:${Math.abs(hash).toString(16)}`
+  return `fallback:${Math.abs(hash).toString(16)}`
 }
 
 function createId(): string {
@@ -126,6 +166,14 @@ function createId(): string {
   }
 
   return `demo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function mergeDemoUser(record: DemoUserRecord, patch: Partial<AuthUser>): DemoUserRecord {
+  return {
+    ...record,
+    ...patch,
+    passwordHash: record.passwordHash,
+  }
 }
 
 function toAuthUser(record: DemoUserRecord): AuthUser {
@@ -181,7 +229,7 @@ function authPatchToDbPatch(patch: Partial<AuthUser>) {
   return dbPatch
 }
 
-const AuthContext = createContext<AuthState | null>(null)
+const AuthContext = createContext<AuthState>(defaultAuthState)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -255,13 +303,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase()
-    const passwordHash = hashPassword(password)
+    const passwordHash = await hashPassword(password)
 
     if (!db) {
       const existing = loadDemoUsers().find((candidate) => candidate.email.toLowerCase() === normalizedEmail && candidate.passwordHash === passwordHash)
       if (!existing) return false
 
-      const onboarded = loadSession().userId === existing.id ? loadSession().isOnboarded : existing.goals.length > 0
+      const session = loadSession()
+      const onboarded = session.userId === existing.id ? session.isOnboarded : existing.goals.length > 0
       applyAuthenticatedUser(toAuthUser(existing), onboarded)
       return true
     }
@@ -294,7 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: createId(),
         name: name.trim(),
         email: normalizedEmail,
-        passwordHash: hashPassword(password),
+        passwordHash: await hashPassword(password),
         ...defaultUserValues,
       }
 
@@ -316,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .insert({
         name: name.trim(),
         email: normalizedEmail,
-        password_hash: hashPassword(password),
+        password_hash: await hashPassword(password),
         is_onboarded: false,
         test_type: defaultUserValues.testType,
         level_name: defaultUserValues.levelName,
@@ -341,11 +390,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const users = loadDemoUsers()
       const nextUsers = users.map((candidate) => {
         if (candidate.id !== userId) return candidate
-        return {
-          ...candidate,
+        return mergeDemoUser(candidate, {
           ...data,
           name: data.name ?? candidate.name,
-        }
+        })
       })
 
       saveDemoUsers(nextUsers)
@@ -384,7 +432,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!db) {
         const users = loadDemoUsers()
-        saveDemoUsers(users.map((candidate) => candidate.id === nextUser.id ? { ...candidate, ...patch } : candidate))
+        saveDemoUsers(users.map((candidate) => candidate.id === nextUser.id ? mergeDemoUser(candidate, patch) : candidate))
       } else {
         void db
           .from('users')
@@ -413,9 +461,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth(): AuthState {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
+  return useContext(AuthContext)
 }
