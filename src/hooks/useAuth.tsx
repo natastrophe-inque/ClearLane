@@ -167,6 +167,7 @@ async function hashPassword(password: string): Promise<string> {
     throw new Error('ClearLane demo mode requires a modern browser with crypto.subtle support. Please use a recent version of Chrome, Firefox, Safari, or Edge.')
   }
 
+  // Demo-only browser hash for local development. Do not copy this approach into production auth.
   const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
   const digest = await crypto.subtle.digest('SHA-256', encoded)
   return `sha256:${bytesToHex(new Uint8Array(digest))}`
@@ -199,7 +200,7 @@ function createId(): string {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
 
-  throw new Error('ClearLane demo mode requires a modern browser with secure random number support.')
+  throw new Error('ClearLane demo mode requires a modern browser with secure random number support. Please update to a current version of Chrome, Firefox, Safari, or Edge.')
 }
 
 function mergeDemoUser(record: DemoUserRecord, patch: Partial<AuthUser>): DemoUserRecord {
@@ -232,7 +233,7 @@ function dbUserToAuthUser(row: Record<string, unknown>): AuthUser {
   }
 
   if (typeof row.id !== 'string') {
-    throw new Error('Supabase user row is missing a string id.')
+    throw new Error('User data retrieved from Supabase is missing a valid id field.')
   }
 
   return {
