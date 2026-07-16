@@ -143,12 +143,30 @@ function saveDemoUsers(users: DemoUserRecord[]) {
   localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(users))
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  if (left.length !== right.length) return false
+
+  let mismatch = 0
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  }
+
+  return mismatch === 0
+}
+
+function matchesNormalizedEmail(candidateEmail: string, normalizedEmail: string): boolean {
+  return candidateEmail.trim().toLowerCase() === normalizedEmail
+}
+
 async function hashPassword(password: string): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const encoded = new TextEncoder().encode(`${DEMO_PASSWORD_SALT}:${password}`)
     const digest = await crypto.subtle.digest('SHA-256', encoded)
-    const hex = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
-    return `sha256:${hex}`
+    return `sha256:${bytesToHex(new Uint8Array(digest))}`
   }
 
   let hash = 0
@@ -306,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const passwordHash = await hashPassword(password)
 
     if (!db) {
-      const existing = loadDemoUsers().find((candidate) => candidate.email.toLowerCase() === normalizedEmail && candidate.passwordHash === passwordHash)
+      const existing = loadDemoUsers().find((candidate) => matchesNormalizedEmail(candidate.email, normalizedEmail) && constantTimeEquals(candidate.passwordHash, passwordHash))
       if (!existing) return false
 
       const session = loadSession()
@@ -335,7 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!db) {
       const users = loadDemoUsers()
-      if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
+      if (users.some((candidate) => matchesNormalizedEmail(candidate.email, normalizedEmail))) {
         return false
       }
 
